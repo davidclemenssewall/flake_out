@@ -103,3 +103,10 @@ print('Not Classified As Snowflakes: %.0f' % df_cts[0].sum())
 print('Max. false positive rate: %.5f' % (df_cts[65].sum()/(df_cts[65].sum() 
                                                 + df_cts[0].sum())))
 
+# %% Incorporating Matt's work
+q_s = 0.5
+
+df_cts['Pk_over_Qk_65'] = 1/(q_s*(df_cts[0]+df_cts[65])/df_cts[65])
+df_cts['Pk_over_Qk_0'] = 1/((1-q_s)*(df_cts[0]+df_cts[65])/df_cts[0])
+
+
