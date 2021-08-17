@@ -479,10 +479,10 @@ class MainWindow(Qt.QMainWindow):
         ind = vtk_to_numpy(pdata.GetPointData().GetArray('PointId'))==int(
             self.pointid_lineedit.text())
         pt = vtk_to_numpy(pdata.GetPoints().GetData())[ind, :].squeeze()
-        if vtk_to_numpy(pdata.GetPointData().GetArray('ReturnIndex'))[ind]==-1:
-            self.return_label.setText('Last Return')
-        else:
-            self.return_label.setText('Early Return')
+        cts = 0
+        for c in self.classified_dict:
+            cts += len(self.classified_dict[c])
+        self.return_label.setText(str(cts))
         
         # Limit pointcloud to cylinder 10 m around point
         cyl = vtk.vtkCylinder()

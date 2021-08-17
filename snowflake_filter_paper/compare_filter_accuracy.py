@@ -33,18 +33,18 @@ scan_names = ['ScanPos001',
               'ScanPos003',
               'ScanPos004',
               'ScanPos005',
-              # 'ScanPos006',
-              # 'ScanPos007',
-              # 'ScanPos008',
-              # 'ScanPos009',
+              'ScanPos006',
+              'ScanPos007',
+              'ScanPos008',
+              'ScanPos009',
               ]
 
 # Read in each scan and create dataframe
 df_list = []
 counts_dict = {0: [],
                64: [],
-               65: []
-               }
+               65: [],
+               73: []}
 for scan_name in scan_names:
     # Load scan
     ss = SingleScan(project_path, project_name, scan_name, 
@@ -67,6 +67,10 @@ for scan_name in scan_names:
     uni, cts = np.unique(vtk_to_numpy(ss.polydata_raw.GetPointData().
                                            GetArray('Classification')),
                          return_counts=True)
+    for u in [0, 64, 65, 73]:
+        if not u in uni:
+            uni = np.append(uni, u)
+            cts = np.append(cts, 0)
     for u, c in zip(uni, cts):
         counts_dict[u].append(c)
     
