@@ -15,6 +15,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import open3d as o3d
 import pdal
 import vtk
 from vtk.numpy_interface import dataset_adapter as dsa
@@ -96,6 +97,8 @@ class SingleScan:
     apply_snowflake_filter_returnindex(cylinder_rad, radial_precision)
         Filter snowflakes based on their return index and whether they are on
         the border of the visible region.
+    apply_early_return_filter():
+        Label all early return points as snowflakes (classification 65).
     clear_classification
         Reset all Classification values to 0.
     update_man_class(pdata, classification)
@@ -511,9 +514,15 @@ class SingleScan:
         self.transformFilter.Update()
         self.currentFilter.Update()
 
-    def clear_classification(self):
+    def clear_classification(self, ignore_list=[]):
         """
         Reset Classification for all points to 0
+        
+        Parameters:
+        -----------
+        ignore_list : list, optional
+            List of categories to ignore when clearing classification. The
+            default is [].
 
         Returns
         -------
@@ -521,7 +530,11 @@ class SingleScan:
 
         """
         
-        self.dsa_raw.PointData['Classification'][:] = 0
+        uni = np.unique(self.dsa_raw.PointData['Classification'])
+        for u in uni:
+            if not (u in ignore_list):
+                self.dsa_raw.PointData['Classification'][
+                    self.dsa_raw.PointData['Classification']==u] = 0
         # Update currentTransform
         self.polydata_raw.Modified()
         self.transformFilter.Update()
@@ -812,6 +825,74 @@ class SingleScan:
         self.transformFilter.Update()
         self.currentFilter.Update()
 
+    def apply_early_return_filter(self):
+        """
+        Label any early returns in currentFilter output as snowflakes (65)
+
+        Returns
+        -------
+        None.
+
+
+        """
+
+        # Get relevant arrays from currentFilter output
+        Points = vtk_to_numpy(self.currentFilter.GetOutput().GetPoints()
+                              .GetData())
+        PointIds = vtk_to_numpy(self.currentFilter.GetOutput().GetPointData().
+                        GetArray('PointId'))
+        ReturnIndex = vtk_to_numpy(self.currentFilter.GetOutput().GetPointData().
+                        GetArray('ReturnIndex'))
+
+        # Set Classification field in polydata_raw to be 65 where ReturnIndex
+        # is less than -1 (the point is an early return)
+        self.dsa_raw.PointData['Classification'][np.isin(self.dsa_raw.PointData
+            ['PointId'], PointIds[ReturnIndex<-1], assume_unique=True)] = 65
+        self.polydata_raw.Modified()
+        self.transformFilter.Update()
+        self.currentFilter.Update()
+
+    def apply_radius_outlier_filter(self, nb_points, radius):
+        """
+        Use Open3D to apply radius outlier filter to currentFilter output.
+
+        Parameters
+        ----------
+        nb_points : int
+            If number of points within sphere is less than nb_points set
+            Classification to 65 (snowflake)
+        radius : float
+            Radius of sphere to find neighbors within
+
+        Returns
+        -------
+        None.
+
+
+        """
+
+        # Get relevant arrays from currentFilter output
+        Points = vtk_to_numpy(self.currentFilter.GetOutput().GetPoints()
+                              .GetData())
+        PointIds = vtk_to_numpy(self.currentFilter.GetOutput().GetPointData().
+                        GetArray('PointId'))
+
+        # Create Open3d pointcloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(Points)
+
+        # Apply radius outlier removal
+        _, ind = pcd.remove_radius_outlier(nb_points=nb_points, radius=radius)
+
+
+        # Set Classification field in polydata_raw to be 65 where radius
+        # outlier removal removed points
+        self.dsa_raw.PointData['Classification'][np.isin(self.dsa_raw.PointData
+            ['PointId'], PointIds[ind], assume_unique=True)] = 65
+        self.polydata_raw.Modified()
+        self.transformFilter.Update()
+        self.currentFilter.Update()
+
     def write_npy_pdal(self, output_dir=None, filename=None, 
                        mode='transformed', skip_fields=[]):
         """
@@ -1022,4 +1103,28 @@ class SingleScan:
             for name in self.dsa_raw.PointData.keys():
                 np.save(os.path.join(write_dir, name), 
                         self.dsa_raw.PointData[name][ind])
-            
+    
+    def write_classification_suffix(self, class_suffix, pts_suffix=''):
+        """
+        Write the current classification array to the npyfiles directory with
+        a suffix appended to the filename (so it may be loaded in the future)
+
+        Parameters
+        ----------
+        class_suffix : str
+            Suffix to append to filename 
+            (will be Classification[class_suffix].npy)
+        pts_suffix : str, optional
+            Suffix for this set of npyfiles.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        npy_dir = "npyfiles" + pts_suffix
+        write_dir = os.path.join(self.project_path, self.project_name, 
+                                     npy_dir, self.scan_name)
+        np.save(os.path.join(write_dir, 'Classification' + class_suffix), 
+                        self.dsa_raw.PointData['Classification'])
