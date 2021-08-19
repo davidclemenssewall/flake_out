@@ -130,6 +130,11 @@ class MainWindow(Qt.QMainWindow):
         self.scan_combobox.setEnabled(0)
         self.scan_combobox.setSizeAdjustPolicy(0)
         opt_layout.addWidget(self.scan_combobox)
+
+        # Lineedit to enter the Classification suffix
+        opt_layout.addWidget(Qt.QLabel('Classification suffix:'))
+        self.class_lineedit = Qt.QLineEdit('')
+        opt_layout.addWidget(self.class_lineedit)
         
         # Button to prompt us to select a project
         self.sel_proj_button = Qt.QPushButton("Select Scan")
@@ -434,7 +439,8 @@ class MainWindow(Qt.QMainWindow):
                              self.scan_combobox.currentText(), import_mode=
                              'read_scan', class_list='all', las_fieldnames=
                              ['Points', 'Classification', 'PointId',
-                              'ReturnIndex'])
+                              'ReturnIndex'], 
+                              class_suffix=self.class_lineedit.text())
         self.ss.add_sop()
         self.ss.apply_transforms(['sop'])
         

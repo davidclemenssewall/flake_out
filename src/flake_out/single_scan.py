@@ -97,8 +97,12 @@ class SingleScan:
     apply_snowflake_filter_returnindex(cylinder_rad, radial_precision)
         Filter snowflakes based on their return index and whether they are on
         the border of the visible region.
-    apply_early_return_filter():
+    apply_early_return_filter()
         Label all early return points as snowflakes (classification 65).
+    apply_radius_outlier_filter(nb_points, radius)
+        Label all points filtered by open3d's radius outlier filter as 65
+    apply_statistical_outlier_filter(nb_neighbors, std_ratio)
+        Label all points filtered by open3d's statistical outlier filter as 65
     clear_classification
         Reset all Classification values to 0.
     update_man_class(pdata, classification)
@@ -112,7 +116,8 @@ class SingleScan:
     def __init__(self, project_path, project_name, scan_name, 
                  import_mode='import_las', create_id=True,
                  las_fieldnames=None, 
-                 class_list=[0, 1, 2, 70], read_dir=None, suffix=''):
+                 class_list=[0, 1, 2, 70], read_dir=None, suffix='',
+                 class_suffix=''):
         """
         Creates SingleScan object and transformation pipeline.
         
@@ -153,6 +158,9 @@ class SingleScan:
         suffix : str, optional
             Suffix for npyfiles directory if we are reading scans. The default
             is '' which corresponds to the regular npyfiles directory.
+        class_suffix : str, optional
+            Suffix for which Classification[class_suffix].npy file to load as
+            'Classification' array. The default is '' (load Classification.npy)
 
         Returns
         -------
@@ -163,6 +171,7 @@ class SingleScan:
         self.project_path = project_path
         self.project_name = project_name
         self.scan_name = scan_name
+        self.class_suffix = class_suffix
 
         # Read scan
         if import_mode=='read_scan':
@@ -185,6 +194,9 @@ class SingleScan:
             else:
                 las_fieldnames = copy.deepcopy(las_fieldnames)
                 for i in range(len(las_fieldnames)):
+                    # Adjust for different Classification arrays
+                    if las_fieldnames[i]=='Classification':
+                        las_fieldnames[i] = 'Classification' + class_suffix
                     las_fieldnames[i] = las_fieldnames[i] + '.npy'
             
             pdata = vtk.vtkPolyData()
@@ -192,6 +204,9 @@ class SingleScan:
             for k in las_fieldnames:
                 try:
                     name = k.split('.')[0]
+                    # Adjust for class_suffix
+                    if k==('Classification' + class_suffix + '.npy'):
+                        name = 'Classification'
                     self.np_dict[name] = np.load(os.path.join(npy_path, k))
                     if name=='Points':
                         pts = vtk.vtkPoints()
@@ -429,6 +444,8 @@ class SingleScan:
         if create_df:
             self.man_class = pd.DataFrame({'user':
                                            pd.Series([], dtype='string'),
+                                           'class_suffix':
+                                           pd.Series([], dtype='string'),
                                            'datetime':
                                            pd.Series([], dtype='datetime64[ns]'),
                                            'X':
@@ -440,6 +457,8 @@ class SingleScan:
                                            'Classification':
                                            pd.Series([], dtype=np.uint8)})
             self.man_class.index.name = 'PointId'
+            self.man_class.set_index(['user', 'class_suffix'], append=True, 
+                                     inplace=True)
 
     def add_transform(self, key, matrix):
         """
@@ -584,6 +603,9 @@ class SingleScan:
                                      n_pts, dtype=np.uint8),
                                  'user' : pd.Series([user for i in range(n_pts)]
                                                     , dtype='string'),
+                                 'class_suffix' : pd.Series([self.class_suffix 
+                                                    for i in range(n_pts)]
+                                                    , dtype='string'),
                                  'datetime' : (np.datetime64(datetime.now(), 
                                                              'ns') +
                                                np.zeros(n_pts, 
@@ -592,6 +614,10 @@ class SingleScan:
                                 index=dsa_pdata.PointData['PointId'], 
                                 copy=True)
         df_trans.index.name = 'PointId'
+        df_trans['user'] = user
+        df_trans['class_suffix'] = self.class_suffix
+        df_trans.set_index(['user', 'class_suffix'], append=True, inplace=True)
+        #print(df_trans)
         
         # Join the dataframe with the existing one, overwrite points if we
         # have repicked some points.
@@ -600,6 +626,8 @@ class SingleScan:
         # drop columns that we don't have. Because they show up as 
         # vtkNoneArray their datatype is object.
         self.man_class = self.man_class.select_dtypes(exclude=['object'])
+
+        #print(self.man_class)
         
         # Write to file to save
         self.man_class.to_parquet(os.path.join(self.project_path, 
@@ -883,6 +911,47 @@ class SingleScan:
 
         # Apply radius outlier removal
         _, ind = pcd.remove_radius_outlier(nb_points=nb_points, radius=radius)
+
+
+        # Set Classification field in polydata_raw to be 65 where radius
+        # outlier removal removed points
+        self.dsa_raw.PointData['Classification'][np.isin(self.dsa_raw.PointData
+            ['PointId'], PointIds[ind], assume_unique=True)] = 65
+        self.polydata_raw.Modified()
+        self.transformFilter.Update()
+        self.currentFilter.Update()
+
+    def apply_statistical_outlier_filter(self, nb_neighbors, std_ratio):
+        """
+        Use Open3D to apply radius outlier filter to currentFilter output.
+
+        Parameters
+        ----------
+        nb_neighbors : int
+            Number of neighbors to compute mean distance to
+        std_ratio : float
+            Standard deviation ratio
+
+        Returns
+        -------
+        None.
+
+
+        """
+
+        # Get relevant arrays from currentFilter output
+        Points = vtk_to_numpy(self.currentFilter.GetOutput().GetPoints()
+                              .GetData())
+        PointIds = vtk_to_numpy(self.currentFilter.GetOutput().GetPointData().
+                        GetArray('PointId'))
+
+        # Create Open3d pointcloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(Points)
+
+        # Apply radius outlier removal
+        _, ind = pcd.remove_statistical_outlier(nb_neighbors=nb_neighbors, 
+                                                std_ratio=std_ratio)
 
 
         # Set Classification field in polydata_raw to be 65 where radius
