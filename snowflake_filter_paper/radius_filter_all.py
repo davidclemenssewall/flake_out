@@ -47,6 +47,6 @@ for scan_name in scan_names:
                         import_mode='read_scan', class_list=[0])
     # Wipe all classifications except manual ones
     ss.clear_classification(ignore_list=[73])
-    # apply early return filter
+    # apply radius filter
     ss.apply_radius_outlier_filter(nb_points, radius)
     ss.write_classification_suffix('_radius')

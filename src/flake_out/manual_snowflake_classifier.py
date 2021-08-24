@@ -212,7 +212,7 @@ class MainWindow(Qt.QMainWindow):
         actor_pt_0 = vtk.vtkActor()
         actor_pt_0.SetMapper(mapper_pt_0)
         actor_pt_0.GetProperty().RenderPointsAsSpheresOn()
-        actor_pt_0.GetProperty().SetPointSize(10)
+        actor_pt_0.GetProperty().SetPointSize(15)
         actor_pt_0.GetProperty().SetColor(cm.turbo(0.5)[:3])
         
         # Renderer and interactor
@@ -517,7 +517,7 @@ class MainWindow(Qt.QMainWindow):
         self.actor = vtk.vtkActor()
         self.actor.SetMapper(self.mapper)
         self.actor.GetProperty().RenderPointsAsSpheresOn()
-        self.actor.GetProperty().SetPointSize(5)
+        self.actor.GetProperty().SetPointSize(10)
         self.renderer.AddActor(self.actor)
         self.vtkWidget.GetRenderWindow().Render()
         

@@ -134,10 +134,8 @@ class SingleScan:
             Typically ScanPos0XX where XX is the scan number.
         import_mode : str, optional
             How to create polydata_raw, the base data for this SingleScan. 
-            Options are: 'poly' (read from Riscan generated poly), 'read_scan'
-            (read saved vtp file), 'import_las' (use pdal to import from las
-            file generate by Riscan), 'empty' (create an empty polydata, 
-            useful if we just want to work with transformations). The default 
+            Options are: 'read_scan' (read saved npy files), 'import_las' 
+            (use pdal to import from las file generate by Riscan), The default 
             is 'import_las.
         create_id: bool, optional
             If true and PointId's do not exist create PointIds. The default
@@ -911,12 +909,16 @@ class SingleScan:
 
         # Apply radius outlier removal
         _, ind = pcd.remove_radius_outlier(nb_points=nb_points, radius=radius)
+        # NEED TO INVERT!
+        mask = np.ones(PointIds.size, np.bool)
+        mask[ind] = 0
+        sel_pt_ids = PointIds[mask]
 
 
         # Set Classification field in polydata_raw to be 65 where radius
-        # outlier removal removed points
+        # outlier removal removed points 
         self.dsa_raw.PointData['Classification'][np.isin(self.dsa_raw.PointData
-            ['PointId'], PointIds[ind], assume_unique=True)] = 65
+            ['PointId'], sel_pt_ids, assume_unique=True)] = 65
         self.polydata_raw.Modified()
         self.transformFilter.Update()
         self.currentFilter.Update()
