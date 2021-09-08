@@ -111,6 +111,7 @@ class SingleScan:
         Write SingleScan to numpy structured array that can be read by pdal.
     write_scan(write_dir, class_list, suffix)
         Write the SingleScan to numpy files that can be loaded on init.
+
     """
 
     def __init__(self, project_path, project_name, scan_name, 
@@ -739,10 +740,10 @@ class SingleScan:
         """
         Filter snowflakes using return index visible space.
         
-        Snowflakes are too small to fully occlude the laser pulse. Therefore
-        all snowflakes will be one of multiple returns (returnindex<-1).
-        However, the edges of shadows will also be one of multiple returns. To
-        address this we look at each early return and check if it's on the 
+        Many snowflakes are too small to fully occlude the laser pulse. Thus
+        these snowflakes will be early returns of multi-returns (returnindex<-1)
+        . However, glancing returns from the surface may also be early returns. 
+        To address this we look at each early return and check if it's on the 
         border of the visible area from the scanner's perspective. We do this
         by finding all points within cylinder_rad of the point in question
         in panorama space. Then, if the radial value of the point in question
@@ -750,8 +751,8 @@ class SingleScan:
         in question is on the border of the visible region and we should keep
         it.
         
-        All points that this filter identifies as snowflakes are set to
-        Classification=65
+        All points in polydata_raw that this filter identifies as snowflakes 
+        are set to Classification=65
 
         Parameters
         ----------
@@ -769,7 +770,7 @@ class SingleScan:
 
         """
         
-        # Convert to polar coordinates
+        # Convert pointcloud to polar coordinates
         sphere2cart = vtk.vtkSphericalTransform()
         cart2sphere = sphere2cart.GetInverse()
         transformFilter = vtk.vtkTransformFilter()
@@ -785,7 +786,8 @@ class SingleScan:
         thresholdFilter.SetInputConnection(transformFilter.GetOutputPort())
         thresholdFilter.Update()
         
-        # Transform such that points are  in x and y and radius is in Elevation field
+        # Transform such that angular (panorama) coordinates are the first two
+        # dimensions and radius is in the Elevation field
         swap_r_phi = vtk.vtkTransform()
         swap_r_phi.SetMatrix((0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1))
         filter_r_phi = vtk.vtkTransformFilter()
@@ -822,6 +824,8 @@ class SingleScan:
         pt = np.zeros(3)
         snowflake = True
         
+        # For each early return, check whether it's inside the visible region
+        # and hence is likely a snowflake.
         for i in np.arange(early_returns.GetNumberOfPoints()):
             # Get the point in question
             early_returns.GetPoint(i, pt)
@@ -845,7 +849,7 @@ class SingleScan:
                     'PointId']==early_returns.GetPointData().
                     GetPedigreeIds().GetValue(i)] = 65
         
-        # Update currentTransform
+        # Update currentTransform and currentFilter
         self.polydata_raw.GetPointData().SetActiveScalars('Classification')
         self.polydata_raw.Modified()
         self.transformFilter.Update()

@@ -29,6 +29,10 @@ except ModuleNotFoundError:
     from flake_out.single_scan import SingleScan
 
 class MyQVTKRenderWindowInteractor(QVTKRenderWindowInteractor):
+    """
+    Subclass RenderWindowInteractor to overwrite keypress events with our own.
+    """
+
     keyPressed = QtCore.pyqtSignal(int)
     
     def keyPressEvent(self, event):
