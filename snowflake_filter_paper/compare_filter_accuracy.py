@@ -145,3 +145,90 @@ print(df.groupby(['class_suffix', 'class_approx'])[['N', 'N_s', 'frac_filt',
 print(df.groupby(['class_suffix', 'class_approx'])[['N', 'N_s', 'frac_filt', 
                                                     'fpr', 'fnr']].mean()
       .query('class_suffix==class_approx'))
+
+# %% analyze the variance
+
+# this is crude but let's start by trying to estimate the sample variance
+# of each probability
+scan = 'ScanPos001'
+class_suffix = ''
+class_approx = ''
+
+data = np.zeros(int(df.loc[(scan, class_suffix, class_approx)][['tp', 'fp', 'tn', 'fn']].sum()))
+data[:int(df.loc[(scan, class_suffix, class_approx)]['fp'])] = df.loc[(scan, class_suffix, class_approx)]['wt_approx_c_S']
+data2 = np.zeros(int(df.loc[(scan, class_suffix, class_approx)][['tp', 'fp', 'tn', 'fn']].sum()))
+data2[:int(df.loc[(scan, class_suffix, class_approx)]['fp'])] = df.loc[(scan, class_suffix, class_approx)]['wt_approx_c_S']
+data2[-int(df.loc[(scan, class_suffix, class_approx)]['tn']):] = df.loc[(scan, class_suffix, class_approx)]['wt_approx_c_G']
+
+var_est = ((data.mean()**2)/(data2.mean()**2)) * (data.var()/(data.mean()**2) + data2.var()/(data2.mean()**2))
+np.sqrt(var_est)
+
+# %% Look at combining all of the samples
+
+# Follow variance of ratio estimation from here:
+   #http://www.stat.cmu.edu/%7Ehseltman/files/ratio.pdf
+
+classifier = '_radius'
+
+df_ss = df.query('class_suffix==class_approx and class_suffix==@classifier')
+
+fp_data = np.zeros(int(df_ss[['tp', 'fp', 'tn', 'fn']].to_numpy().sum()))
+g_data = np.zeros(int(df_ss[['tp', 'fp', 'tn', 'fn']].to_numpy().sum()))
+
+fn_data = np.zeros(int(df_ss[['tp', 'fp', 'tn', 'fn']].to_numpy().sum()))
+s_data = np.zeros(int(df_ss[['tp', 'fp', 'tn', 'fn']].to_numpy().sum()))
+
+fp_ctr = 0
+g_ctr = 0
+
+fn_ctr = 0
+s_ctr = 0
+for row in df_ss.itertuples(index=False):
+    fp_data[fp_ctr:fp_ctr+row.fp] = row.wt_approx_c_S
+    fp_ctr += row.fp
+    
+    g_data[g_ctr:g_ctr+row.fp] = row.wt_approx_c_S
+    g_ctr += row.fp
+    g_data[g_ctr:g_ctr+row.tn] = row.wt_approx_c_G
+    g_ctr += row.tn
+    
+    fn_data[fn_ctr:fn_ctr+row.fn] = row.wt_approx_c_G
+    fn_ctr += row.fn
+    
+    s_data[s_ctr:s_ctr+row.fn] = row.wt_approx_c_G
+    s_ctr += row.fn
+    s_data[s_ctr:s_ctr+row.tp] = row.wt_approx_c_S
+    s_ctr += row.tp
+
+fp_mean = fp_data.mean()
+# we want the variance of the expectation, so by CLT divide sample var by
+# size of dataset
+fp_mean_var = fp_data.var()/fp_data.size
+g_mean = g_data.mean()
+g_mean_var = g_data.var()/g_data.size
+
+fn_mean = fn_data.mean()
+fn_mean_var = fn_data.var()/fn_data.size
+s_mean = s_data.mean()
+s_mean_var = s_data.var()/s_data.size
+
+fpr_var = ((fp_mean**2)/(g_mean**2)) * (fp_mean_var/(fp_mean**2) 
+                                        + g_mean_var/(g_mean**2))
+
+fnr_var = ((fn_mean**2)/(s_mean**2)) * (fn_mean_var/(fn_mean**2) 
+                                        + s_mean_var/(s_mean**2))
+
+print(fp_mean/g_mean)
+print(np.sqrt(fpr_var))
+
+print('fpr range: ')
+print(fp_mean/g_mean -2*np.sqrt(fpr_var))
+print(fp_mean/g_mean +2*np.sqrt(fpr_var))
+
+print(fn_mean/s_mean)
+print(np.sqrt(fnr_var))
+
+# %% get the number of false negatives
+
+print(df.groupby(['class_suffix', 'class_approx'])[['tn', 'fn']].sum()
+      .query('class_suffix==class_approx'))
